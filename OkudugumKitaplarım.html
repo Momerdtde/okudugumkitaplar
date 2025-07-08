@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Okuduğum Kitaplar</title>
+  
+  <!-- Tailwind CSS (CDN) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Montserrat:wght@700&display=swap" rel="stylesheet">
+  
+  <!-- React Kütüphaneleri -->
+  <script src="https://unpkg.com/react@17/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@17/umd/react-dom.development.js"></script>
+  
+  <!-- Babel (JSX'i tarayıcıda çalıştırmak için) -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  
+  <style>
+    body {
+        font-family: 'Inter', sans-serif;
+    }
+    h1, h2, h3.font-montserrat {
+        font-family: 'Montserrat', sans-serif;
+    }
+  </style>
+</head>
+<body class="bg-slate-900">
+
+  <div id="root"></div>
+
+  <!-- Firebase Kütüphaneleri -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-app.js";
+    import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-auth.js";
+    import { getFirestore, collection, doc, addDoc, setDoc, updateDoc, deleteDoc, onSnapshot, query, getDocs, writeBatch } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore.js";
+    window.firebase = { 
+        initializeApp, 
+        getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged,
+        getFirestore, collection, doc, addDoc, setDoc, updateDoc, deleteDoc, onSnapshot, query, getDocs, writeBatch
+    };
+  </script>
+
+  <!-- React UYGULAMA KODUNUZ (SON HALİ) -->
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+    const { 
+        initializeApp, 
+        getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged,
+        getFirestore, collection, doc, addDoc, setDoc, updateDoc, deleteDoc, onSnapshot, query, getDocs, writeBatch
+    } = window.firebase;
+
+    // Firebase yapılandırması
+    const firebaseConfig = {
+      apiKey: "AIzaSyCbXDdwnz0LNU7IXr4KO__usfkjYYaHJpo",
+      authDomain: "okudugumkitaplarapp.firebaseapp.com",
+      projectId: "okudugumkitaplarapp",
+      storageBucket: "okudugumkitaplarapp.firebasestorage.app",
+      messagingSenderId: "292934565697",
+      appId: "1:292934565697:web:a0cdc4cbc951faceccebc0",
+      measurementId: "G-V0EFGVV2CR"
+    };
+
+    const appId = firebaseConfig.projectId;
+
+    function App() {
+      // State'ler...
+      const [db, setDb] = useState(null);
+      const [auth, setAuth] = useState(null);
+      const [userId, setUserId] = useState(null);
+      const [isAuthReady, setIsAuthReady] = useState(false);
+      const [email, setEmail] = useState('');
+      const [password, setPassword] = useState('');
+      const [isLoginMode, setIsLoginMode] = useState(true);
+      const [authError, setAuthError] = useState('');
+      const [searchTerm, setSearchTerm] = useState('');
+      const [searchResults, setSearchResults] = useState([]);
+      const [readBooks, setReadBooks] = useState([]);
+      const [loading, setLoading] = useState(false);
+      const [error, setError] = useState('');
+      const [message, setMessage] = useState(null); 
+      const [showSettings, setShowSettings] = useState(false);
+      const [showAuthorStats, setShowAuthorStats] = useState(false);
+      const [userName, setUserName] = useState('');
+      const [userSurname, setUserSurname] = useState('');
+      const [readBooksFilterTerm, setReadBooksFilterTerm] = useState('');
+      const [editingBook, setEditingBook] = useState(null);
+      const [plainTextImportList, setPlainTextImportList] = useState('');
+      const [showManualAddModal, setShowManualAddModal] = useState(false);
+      const [manualBook, setManualBook] = useState({ title: '', authors: '', publisher: '', description: '', notes: '' });
+      const [selectedAuthorBooks, setSelectedAuthorBooks] = useState([]);
+      const [selectedAuthorName, setSelectedAuthorName] = useState('');
+      const [authorSearchTerm, setAuthorSearchTerm] = useState('');
+      const [showBackToTop, setShowBackToTop] = useState(false);
+      const [confirmation, setConfirmation] = useState(null);
+
+      useEffect(() => {
+        const handleScroll = () => setShowBackToTop(window.scrollY > 300);
+        window.addEventListener('scroll', handleScroll);
+        return () => window.removeEventListener('scroll', handleScroll);
+      }, []);
+
+      const scrollToTop = () => window.scrollTo({ top: 0, behavior: 'smooth' });
+
+      const formatTitle = (title) => {
+        if (!title) return '';
+        return title
+            .toLocaleLowerCase('tr-TR')
+            .split(' ')
+            .map(word => {
+                if (!word) return '';
+                return word.charAt(0).toLocaleUpperCase('tr-TR') + word.slice(1);
+            })
+            .join(' ');
+      };
+
+      // GÜNCELLENDİ: Halid Ziya için standardizasyon eklendi.
+      const standardizeAuthorName = (author) => {
+        if (!author) return '';
+        const lowerCaseAuthor = author.toLocaleLowerCase('tr-TR').trim();
+        
+        const omerSeyfettinVariations = ['ömer seyfettin', 'omer seyfettin', 'ö. seyfettin', 'o. seyfettin', 'ö.seyfettin', 'o.seyfettin', 'ö. seyfetin', 'o. seyfetin'];
+        const halidZiyaVariations = ['halid ziya', 'halit ziya', 'hâlid ziya', 'halid ziya uşaklıgil', 'halit ziya uşaklıgil', 'hâlid ziya uşaklıgil'];
+
+        if (omerSeyfettinVariations.includes(lowerCaseAuthor)) {
+          return 'Ömer Seyfettin';
+        }
+        
+        if (halidZiyaVariations.includes(lowerCaseAuthor)) {
+          return 'Halid Ziya Uşaklıgil';
+        }
+
+        return author;
+      };
+
+      const formatAuthor = (author) => {
+        if (!author) return '';
+        let standardized = standardizeAuthorName(author);
+        return standardized.split(' ').map(word => {
+          if (!word) return '';
+          return word.charAt(0).toLocaleUpperCase('tr-TR') + word.slice(1).toLocaleLowerCase('tr-TR');
+        }).join(' ');
+      };
+      
+      const isFormattedCorrectly = (title) => {
+        if (!title) return true;
+        return formatTitle(title) === title;
+      };
+
+      const getAuthorStats = () => {
+        const stats = {};
+        readBooks.forEach(book => {
+          const authors = book.authors ? book.authors.split(',').map(a => a.trim()).filter(a => a.length > 0) : [];
+          authors.forEach(author => {
+            const standardizedAuthor = formatAuthor(author);
+            if (!stats[standardizedAuthor]) {
+              stats[standardizedAuthor] = { count: 0, books: [] };
+            }
+            stats[standardizedAuthor].count++;
+            stats[standardizedAuthor].books.push(book.title);
+          });
+        });
+        let sortedAuthors = Object.entries(stats).sort(([, a], [, b]) => b.count - a.count);
+        if (authorSearchTerm.trim()) {
+          sortedAuthors = sortedAuthors.filter(([authorName]) =>
+            authorName.toLocaleLowerCase('tr-TR').includes(authorSearchTerm.toLocaleLowerCase('tr-TR'))
+          );
+        }
+        return sortedAuthors;
+      };
+
+      const handleAuthorClick = (authorName, books) => {
+        setSelectedAuthorName(authorName);
+        setSelectedAuthorBooks(books);
+      };
+
+      const openEditModal = (book) => setEditingBook({ ...book });
+      const closeEditModal = () => setEditingBook(null);
+      
+      const resetManualBookForm = () => {
+        setManualBook({ title: '', authors: '', publisher: '', description: '', notes: '' });
+      };
+
+      useEffect(() => {
+        try {
+          const app = initializeApp(firebaseConfig);
+          const authInstance = getAuth(app);
+          const firestoreInstance = getFirestore(app);
+          setAuth(authInstance);
+          setDb(firestoreInstance);
+          const unsubscribe = onAuthStateChanged(authInstance, user => {
+            setUserId(user ? user.uid : null);
+            setIsAuthReady(true);
+          });
+          return () => unsubscribe();
+        } catch (err) {
+          setError("Firebase başlatılamadı.");
+        }
+      }, []);
+
+      useEffect(() => {
+        if (!isAuthReady || !db || !userId) return;
+        const booksUnsubscribe = onSnapshot(collection(db, `artifacts/${appId}/users/${userId}/readBooks`), snapshot => {
+          setReadBooks(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        });
+        const profileUnsubscribe = onSnapshot(doc(db, `artifacts/${appId}/users/${userId}/profile/info`), docSnap => {
+          if (docSnap.exists()) {
+            const { userName = '', userSurname = '' } = docSnap.data();
+            setUserName(userName);
+            setUserSurname(userSurname);
+          } else {
+            setUserName('');
+            setUserSurname('');
+          }
+        });
+        return () => { booksUnsubscribe(); profileUnsubscribe(); };
+      }, [isAuthReady, db, userId]);
+
+      const showMessage = (content, type) => {
+        setMessage({ content, type });
+        setTimeout(() => setMessage(null), 4000);
+      };
+      
+      const saveUserProfile = async () => {
+        if (!db || !userId) return showMessage('Kullanıcı oturumu hazır değil.', 'error');
+        try {
+          await setDoc(doc(db, `artifacts/${appId}/users/${userId}/profile/info`), { userName, userSurname }, { merge: true });
+          showMessage('Profil bilgileri kaydedildi!', 'success');
+        } catch (e) { showMessage("Profil kaydedilirken hata oluştu.", "error"); }
+      };
+      
+      const exportData = () => {
+        if (readBooks.length === 0) return showMessage('Dışa aktarılacak kitap bulunmuyor.', 'info');
+        const textData = readBooks.map(book => `${book.title} - ${book.authors}`).join('\n');
+        const blob = new Blob([textData], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = 'okudugum_kitaplar.txt';
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showMessage('Veri başarıyla metin dosyası olarak dışa aktarıldı!', 'success');
+      };
+      
+      const handlePlainTextImport = async () => {
+        if (!plainTextImportList.trim() || !db || !userId) return showMessage('İçe aktarılacak liste boş veya kullanıcı oturumu hazır değil.', 'error');
+        const lines = plainTextImportList.split('\n').filter(line => line.trim().length > 0);
+        const existingBooks = new Set(readBooks.map(b => `${b.title.toLocaleLowerCase('tr-TR')}-${b.authors.toLocaleLowerCase('tr-TR')}`));
+        const newBooksToAdd = [];
+        lines.forEach(line => {
+            let title = line.trim(), authors = 'Bilinmiyor';
+            const separatorMatch = line.match(/(.*)\s*[-–—]\s*(.*)$/);
+            if (separatorMatch) { [ ,title, authors] = separatorMatch.map(s => s.trim()); }
+            const formattedTitle = formatTitle(title), formattedAuthors = formatAuthor(authors);
+            const bookKey = `${formattedTitle.toLocaleLowerCase('tr-TR')}-${formattedAuthors.toLocaleLowerCase('tr-TR')}`;
+            if (!existingBooks.has(bookKey)) {
+                newBooksToAdd.push({ title: formattedTitle, authors: formattedAuthors, publisher: '', notes: '' });
+                existingBooks.add(bookKey);
+            }
+        });
+        if (newBooksToAdd.length === 0) return showMessage('Yeni kitap bulunamadı veya tümü zaten listenizde.', 'info');
+        try {
+            const batch = writeBatch(db);
+            newBooksToAdd.forEach(book => {
+                const newDocRef = doc(collection(db, `artifacts/${appId}/users/${userId}/readBooks`));
+                batch.set(newDocRef, book);
+            });
+            await batch.commit();
+            showMessage(`${newBooksToAdd.length} kitap başarıyla eklendi!`, 'success');
+            setPlainTextImportList(''); setShowSettings(false);
+        } catch (e) { showMessage('Kitaplar içe aktarılırken bir hata oluştu.', 'error'); }
+      };
+
+      const searchBooks = async () => {
+        if (!searchTerm.trim()) return showMessage('Arama terimi girin.', 'error');
+        setLoading(true); setError(''); setSearchResults([]);
+        try {
+          const response = await fetch(`https://openlibrary.org/search.json?q=${encodeURIComponent(searchTerm)}&limit=10`);
+          const data = await response.json();
+          if (data.docs && data.docs.length > 0) {
+            setSearchResults(data.docs.map(item => ({
+              id: self.crypto.randomUUID(), title: formatTitle(item.title || 'Başlık Bilgisi Yok'), authors: formatAuthor(item.author_name ? item.author_name.join(', ') : 'Yazar Bilgisi Yok'), publisher: item.publisher ? item.publisher.join(', ') : 'Yayınevi Bilgisi Yok', description: '', notes: ''
+            })));
+          } else { showMessage('Aradığınız kitap bulunamadı.', 'info'); }
+        } catch (err) { showMessage('Kitap arama sırasında bir hata oluştu.', 'error'); } 
+        finally { setLoading(false); }
+      };
+      
+      const addBook = async (book) => {
+          if (!db || !userId) return showMessage('Kullanıcı oturumu hazır değil.', 'error');
+          const newBook = { title: formatTitle(book.title), authors: formatAuthor(book.authors), publisher: book.publisher, description: book.description, notes: book.notes };
+          const q = query(collection(db, `artifacts/${appId}/users/${userId}/readBooks`));
+          const querySnapshot = await getDocs(q);
+          const exists = querySnapshot.docs.some(doc => doc.data().title.toLocaleLowerCase('tr-TR') === newBook.title.toLocaleLowerCase('tr-TR') && doc.data().authors.toLocaleLowerCase('tr-TR') === newBook.authors.toLocaleLowerCase('tr-TR'));
+          if (exists) return showMessage('Bu kitap zaten listenizde var.', 'error');
+          try {
+              await addDoc(collection(db, `artifacts/${appId}/users/${userId}/readBooks`), newBook);
+              showMessage('Kitap başarıyla eklendi!', 'success'); setSearchResults([]); setSearchTerm('');
+          } catch (e) { showMessage('Kitap eklenirken hata oluştu.', 'error'); }
+      };
+      
+      const handleManualAddBook = async () => {
+        if (!manualBook.title.trim() || !manualBook.authors.trim()) return showMessage('Başlık ve Yazar alanları zorunludur.', 'error');
+        const newBook = { title: formatTitle(manualBook.title), authors: formatAuthor(manualBook.authors), publisher: manualBook.publisher || 'Yayınevi Bilgisi Yok', description: manualBook.description || '', notes: manualBook.notes || '' };
+        addBook(newBook).then(() => { resetManualBookForm(); setShowManualAddModal(false); });
+      };
+      
+      const saveEditedBook = async () => {
+        if (!db || !userId || !editingBook) return showMessage('Kaydedilecek veri bulunamadı.', 'error');
+        const { id, ...bookData } = editingBook;
+        
+        const formattedBookData = {
+            ...bookData,
+            title: formatTitle(bookData.title),
+            authors: formatAuthor(bookData.authors)
+        };
+
+        try {
+            await setDoc(doc(db, `artifacts/${appId}/users/${userId}/readBooks`, id), formattedBookData);
+            showMessage('Kitap başarıyla güncellendi!', 'success'); closeEditModal();
+        } catch (e) { showMessage('Kitap güncellenirken bir hata oluştu.', 'error'); }
+      };
+
+      const removeBook = async (id) => {
+        if (!db || !userId) return showMessage('Kullanıcı oturumu hazır değil.', 'error');
+        setConfirmation({
+            message: 'Bu kitabı silmek istediğinizden emin misiniz?',
+            onConfirm: async () => {
+                try { 
+                    await deleteDoc(doc(db, `artifacts/${appId}/users/${userId}/readBooks`, id)); 
+                    showMessage('Kitap başarıyla silindi!', 'success'); 
+                } catch (e) { 
+                    showMessage('Kitap silinirken hata oluştu.', 'error'); 
+                }
+            },
+            danger: true
+        });
+      };
+
+      const handleLogin = async () => {
+        if (!email || !password) return setAuthError('E-posta ve şifre girin.');
+        try { await signInWithEmailAndPassword(auth, email, password); } catch (e) { setAuthError('Yanlış e-posta veya şifre.'); }
+      };
+
+      const handleRegister = async () => {
+        if (!email || !password) return setAuthError('E-posta ve şifre girin.');
+        try { await createUserWithEmailAndPassword(auth, email, password); } 
+        catch (e) {
+            if (e.code === 'auth/weak-password') setAuthError('Şifre en az 6 karakter olmalıdır.');
+            else if (e.code === 'auth/email-already-in-use') setAuthError('Bu e-posta zaten kullanımda.');
+            else setAuthError('Kayıt olurken bir hata oluştu.');
+        }
+      };
+      
+      const handleSignOut = async () => {
+        try { await signOut(auth); setReadBooks([]); setUserName(''); setUserSurname(''); setEmail(''); setPassword(''); } 
+        catch (e) { showMessage('Çıkış yaparken hata oluştu.', 'error'); }
+      };
+
+      const filteredReadBooks = readBooks.filter(book => book.title.toLocaleLowerCase('tr-TR').includes(readBooksFilterTerm.toLocaleLowerCase('tr-TR')) || (book.authors && book.authors.toLocaleLowerCase('tr-TR').includes(readBooksFilterTerm.toLocaleLowerCase('tr-TR'))));
+      
+      if (!isAuthReady) return <div className="min-h-screen flex items-center justify-center text-white text-xl">Yükleniyor...</div>;
+
+      if (!userId) {
+        return (
+          <div className="min-h-screen bg-slate-900 py-12 px-4 text-slate-100 flex items-center justify-center">
+            {message && (<div className={`fixed top-4 left-1/2 -translate-x-1/2 p-4 rounded-lg shadow-lg z-50 ${message.type === 'success' ? 'bg-green-600' : 'bg-red-600'} text-white`}>{message.content}</div>)}
+            <div className="bg-slate-800 p-8 rounded-xl shadow-lg w-full max-w-md">
+              <h2 className="text-3xl font-bold text-center mb-6">{isLoginMode ? 'Giriş Yap' : 'Kaydol'}</h2>
+              {authError && <p className="text-red-400 text-center mb-4">{authError}</p>}
+              <input type="email" placeholder="E-posta" className="w-full p-3 mb-4 bg-slate-700 rounded-lg" value={email} onChange={(e) => setEmail(e.target.value)} />
+              <input type="password" placeholder="Şifre" className="w-full p-3 mb-6 bg-slate-700 rounded-lg" value={password} onChange={(e) => setPassword(e.target.value)} />
+              <button onClick={isLoginMode ? handleLogin : handleRegister} className="w-full py-3 bg-blue-600 rounded-lg font-semibold hover:bg-blue-700">{isLoginMode ? 'Giriş Yap' : 'Kaydol'}</button>
+              <p className="text-center mt-4"> <button onClick={() => setIsLoginMode(!isLoginMode)} className="text-blue-400 hover:underline">{isLoginMode ? 'Hesabın yok mu? Kaydol' : 'Zaten hesabın var mı? Giriş yap'}</button> </p>
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div className="min-h-screen bg-slate-900 py-12 px-4 text-slate-100">
+          {message && (<div className={`fixed top-4 left-1/2 -translate-x-1/2 p-4 rounded-lg shadow-lg z-[100] ${message.type === 'success' ? 'bg-green-600' : 'bg-red-600'} text-white`}>{message.content}</div>)}
+          
+          {confirmation && (
+            <div className="fixed inset-0 bg-slate-900 bg-opacity-80 flex items-center justify-center z-[60] p-4">
+                <div className="bg-slate-700 p-8 rounded-xl shadow-lg w-full max-w-md text-center">
+                    <h3 className="text-xl font-bold text-white mb-6">{confirmation.message}</h3>
+                    <div className="flex justify-center gap-4">
+                        <button onClick={() => setConfirmation(null)} className="px-6 py-3 bg-gray-600 text-white font-semibold rounded-lg hover:bg-gray-700">İptal</button>
+                        <button onClick={() => { confirmation.onConfirm(); setConfirmation(null); }} className={`px-6 py-3 text-white font-semibold rounded-lg ${confirmation.danger ? 'bg-red-700 hover:bg-red-800' : 'bg-orange-600 hover:bg-orange-700'}`}>Evet, Eminim</button>
+                    </div>
+                </div>
+            </div>
+          )}
+
+          <div className="max-w-4xl mx-auto bg-slate-800 p-6 rounded-xl shadow-lg relative">
+            <h1 className="text-4xl font-bold text-center text-slate-100 font-montserrat">Okuduğum Kitaplar</h1>
+            {(userName || userSurname) && (<p className="text-lg text-slate-300 text-center mt-2 mb-4">Hoş Geldin, {userName} {userSurname}</p>)}
+            <div className="flex justify-end gap-2 mb-8">
+              <button onClick={() => setShowAuthorStats(true)} className="px-4 py-2 bg-emerald-800 rounded-lg font-semibold hover:bg-emerald-700">Yazar İstatistikleri</button>
+              <button onClick={() => setShowSettings(true)} className="px-4 py-2 bg-rose-800 rounded-lg font-semibold hover:bg-rose-700">Ayarlar</button>
+              <button onClick={handleSignOut} className="px-4 py-2 bg-gray-600 rounded-lg font-semibold hover:bg-gray-700">Çıkış Yap</button>
+            </div>
+            <div className="mb-8 p-6 bg-slate-700 rounded-xl">
+              <h2 className="text-2xl font-semibold mb-4">Kitap Ara</h2>
+              <div className="flex gap-4"><input type="text" className="flex-grow p-3 bg-slate-800 rounded-lg" placeholder="Kitap veya yazar adı..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && searchBooks()} /><button onClick={searchBooks} className="px-6 py-3 bg-blue-600 rounded-lg font-semibold" disabled={loading}>{loading ? 'Aranıyor...' : 'Ara'}</button></div>
+            </div>
+            {searchResults.length > 0 && (
+              <div className="mb-8 p-6 bg-slate-700 rounded-xl">
+                <h2 className="text-2xl font-semibold mb-4">Arama Sonuçları</h2>
+                <div className="grid grid-cols-1 gap-4">{searchResults.map(book => (<div key={book.id} className="bg-slate-600 p-4 rounded-lg"><h3 className="text-lg font-bold">{book.title}</h3><p className="text-sm text-emerald-400">{book.authors}</p>{book.publisher && book.publisher !== 'Yayınevi Bilgisi Yok' && (<p className="text-xs text-slate-300">Yayınevi: {book.publisher}</p>)}<button onClick={() => addBook(book)} className="mt-3 px-4 py-2 bg-purple-600 rounded-lg text-sm font-semibold">Listeme Ekle</button></div>))}</div>
+              </div>
+            )}
+            <div className="p-6 bg-slate-700 rounded-xl">
+              <h2 className="text-2xl font-semibold mb-4">Okuduğum Kitaplar ({filteredReadBooks.length})</h2>
+              <input type="text" className="w-full p-3 mb-4 bg-slate-800 rounded-lg" placeholder="Listemde ara..." value={readBooksFilterTerm} onChange={(e) => setReadBooksFilterTerm(e.target.value)} />
+              {filteredReadBooks.length > 0 ? (<div className="grid grid-cols-1 gap-4">{filteredReadBooks.map(book => {
+                  const needsFix = !isFormattedCorrectly(book.title);
+                  return (
+                    <div key={book.id} className={`bg-slate-600 p-4 rounded-lg transition-all ${needsFix ? 'border-2 border-yellow-500' : 'border-2 border-transparent'}`}>
+                      <h3 className="text-lg font-bold">{book.title}</h3>
+                      {needsFix && <p className="text-xs text-yellow-400 mt-1">Bu başlığı düzeltmek için: Düzenle > Kaydet</p>}
+                      <p className="text-sm text-emerald-400 mt-1">{book.authors}</p>
+                      {book.publisher && book.publisher !== 'Yayınevi Bilgisi Yok' && (<p className="text-xs text-slate-300 mt-1">Yayınevi: {book.publisher}</p>)}
+                      <div className="flex gap-2 mt-4">
+                        <button onClick={() => openEditModal(book)} className="px-4 py-2 bg-blue-600 rounded-lg text-sm font-semibold">Düzenle</button>
+                        <button onClick={() => removeBook(book.id)} className="px-4 py-2 bg-red-600 rounded-lg text-sm font-semibold">Sil</button>
+                      </div>
+                    </div>
+                  );
+              })}</div>) : <p className="text-center text-slate-400">Listenizde kitap bulunmuyor.</p>}
+            </div>
+          </div>
+          {showBackToTop && (<button onClick={scrollToTop} className="fixed bottom-5 right-5 bg-blue-600 text-white w-12 h-12 rounded-full flex items-center justify-center shadow-lg hover:bg-blue-700 transition-all z-50" aria-label="Başa Dön"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" /></svg></button>)}
+          {showSettings && (<div className="fixed inset-0 bg-slate-900 bg-opacity-80 flex items-center justify-center z-50 p-4"><div className="bg-slate-800 p-8 rounded-xl shadow-lg w-full max-w-md relative text-slate-100 max-h-[90vh] overflow-y-auto"><button onClick={() => setShowSettings(false)} className="absolute top-4 right-4 text-slate-400 hover:text-white text-2xl">&times;</button><h2 className="text-3xl font-bold mb-6 text-center">Ayarlar</h2><div className="mb-4"><label htmlFor="userName" className="block text-sm font-semibold mb-2">Adınız:</label><input type="text" id="userName" className="w-full p-3 bg-slate-700 rounded-lg" value={userName} onChange={(e) => setUserName(e.target.value)} /></div><div className="mb-8"><label htmlFor="userSurname" className="block text-sm font-semibold mb-2">Soyadınız:</label><input type="text" id="userSurname" className="w-full p-3 bg-slate-700 rounded-lg" value={userSurname} onChange={(e) => setUserSurname(e.target.value)} /></div><button onClick={saveUserProfile} className="w-full mb-4 px-6 py-3 bg-blue-600 rounded-lg font-semibold hover:bg-blue-700">Bilgileri Kaydet</button><button onClick={exportData} className="w-full mb-4 px-6 py-3 bg-green-600 rounded-lg font-semibold hover:bg-green-700">Listeyi Dışa Aktar (.txt)</button><div className="mt-4 p-4 bg-slate-700 rounded-lg"><h3 className="text-xl font-semibold mb-3">İçe Aktar (Düz Metin)</h3><textarea className="w-full p-3 bg-slate-800 rounded-lg min-h-[150px]" value={plainTextImportList} onChange={(e) => setPlainTextImportList(e.target.value)} placeholder="Her satıra bir kitap...&#10;Ör: YABANCI - ALBERT CAMUS"></textarea><button onClick={handlePlainTextImport} className="mt-4 w-full px-6 py-3 bg-purple-600 rounded-lg font-semibold hover:bg-purple-700">Kitapları Ekle</button></div></div></div>)}
+          {editingBook && (<div className="fixed inset-0 bg-slate-900 bg-opacity-80 flex items-center justify-center z-50 p-4"><div className="bg-slate-800 p-8 rounded-xl w-full max-w-md relative max-h-[90vh] overflow-y-auto"><button onClick={closeEditModal} className="absolute top-4 right-4 text-slate-400 hover:text-white text-2xl">&times;</button><h2 className="text-3xl font-bold mb-6 text-center">Kitabı Düzenle</h2><input name="title" placeholder="Başlık" className="w-full p-3 mb-4 bg-slate-700 rounded-lg" value={editingBook.title} onChange={(e) => setEditingBook({...editingBook, title: e.target.value})} /><input name="authors" placeholder="Yazar" className="w-full p-3 mb-4 bg-slate-700 rounded-lg" value={editingBook.authors} onChange={(e) => setEditingBook({...editingBook, authors: e.target.value})} /><input name="publisher" placeholder="Yayınevi" className="w-full p-3 mb-4 bg-slate-700 rounded-lg" value={editingBook.publisher} onChange={(e) => setEditingBook({...editingBook, publisher: e.target.value})} /><textarea name="notes" placeholder="Notlar" className="w-full p-3 mb-4 bg-slate-700 rounded-lg min-h-[100px]" value={editingBook.notes} onChange={(e) => setEditingBook({...editingBook, notes: e.target.value})}></textarea><button onClick={saveEditedBook} className="w-full px-6 py-3 bg-blue-600 rounded-lg font-semibold hover:bg-blue-700">Kaydet</button></div></div>)}
+          {showManualAddModal && (<div className="fixed inset-0 bg-slate-900 bg-opacity-80 flex items-center justify-center z-50 p-4"><div className="bg-slate-800 p-8 rounded-xl w-full max-w-md relative max-h-[90vh] overflow-y-auto"><button onClick={() => { setShowManualAddModal(false); resetManualBookForm(); }} className="absolute top-4 right-4 text-slate-400 hover:text-white text-2xl">&times;</button><h2 className="text-3xl font-bold mb-6 text-center">Kitap Ekle (Manuel)</h2><input name="title" placeholder="Başlık *" className="w-full p-3 mb-4 bg-slate-700 rounded-lg" value={manualBook.title} onChange={(e) => setManualBook({ ...manualBook, title: e.target.value })} /><input name="authors" placeholder="Yazar *" className="w-full p-3 mb-4 bg-slate-700 rounded-lg" value={manualBook.authors} onChange={(e) => setManualBook({ ...manualBook, authors: e.target.value })} /><input name="publisher" placeholder="Yayınevi" className="w-full p-3 mb-4 bg-slate-700 rounded-lg" value={manualBook.publisher} onChange={(e) => setManualBook({ ...manualBook, publisher: e.target.value })} /><textarea name="notes" placeholder="Notlarım..." className="w-full p-3 mb-4 bg-slate-700 rounded-lg min-h-[100px]" value={manualBook.notes} onChange={(e) => setManualBook({ ...manualBook, notes: e.target.value })}></textarea><button onClick={handleManualAddBook} className="w-full px-6 py-3 bg-indigo-600 rounded-lg font-semibold hover:bg-indigo-700">Kitabı Ekle</button></div></div>)}
+          {showAuthorStats && (<div className="fixed inset-0 bg-slate-900 bg-opacity-80 flex items-center justify-center z-50 p-4"><div className="bg-slate-800 p-8 rounded-xl w-full max-w-lg relative text-slate-100 max-h-[90vh] overflow-y-auto"><button onClick={() => { setShowAuthorStats(false); setSelectedAuthorName(''); setAuthorSearchTerm(''); }} className="absolute top-4 right-4 text-slate-400 hover:text-white text-2xl">&times;</button><h2 className="text-3xl font-bold mb-6 text-center">Yazar İstatistikleri</h2>{selectedAuthorName ? (<div><h3 className="text-2xl font-semibold mb-4">{selectedAuthorName} Kitapları ({selectedAuthorBooks.length})</h3><ul className="list-disc list-inside space-y-2 text-slate-300">{selectedAuthorBooks.map((title, i) => <li key={i} className="bg-slate-700 p-2 rounded-lg">{title}</li>)}</ul><button onClick={() => {setSelectedAuthorName(''); setSelectedAuthorBooks([]);}} className="mt-6 px-4 py-2 bg-blue-600 rounded-lg font-semibold hover:bg-blue-700">Geri Dön</button></div>) : (<div><input type="text" placeholder="Yazar ara..." className="w-full p-3 mb-4 bg-slate-700 rounded-lg" value={authorSearchTerm} onChange={(e) => setAuthorSearchTerm(e.target.value)} />{getAuthorStats().length === 0 ? (<p className="text-slate-300 text-center">İstatistik oluşturulacak kitap bulunamadı.</p>) : (<ul className="space-y-3">{getAuthorStats().map(([authorName, data]) => (<li key={authorName} onClick={() => handleAuthorClick(authorName, data.books)} className="bg-slate-700 p-4 rounded-lg flex justify-between items-center cursor-pointer hover:bg-slate-600"><span className="text-lg font-medium">{authorName}</span><span className="px-3 py-1 bg-blue-500 text-white text-sm font-bold rounded-full">{data.count} Kitap</span></li>))}</ul>)}</div>)}</div></div>)}
+        </div>
+      );
+    }
+    ReactDOM.render(<App />, document.getElementById('root'));
+  </script>
+
+</body>
+</html>
+
