@@ -55,8 +55,10 @@
     } = window.firebase;
 
     // Firebase yapılandırması
+    // GÜVENLİK GÜNCELLEMESİ: API Anahtarı kaldırıldı ve yer tutucu eklendi.
+    // Gerçek anahtarınızı buraya GİRMEYİN. Bu şekilde bırakın.
     const firebaseConfig = {
-      apiKey: "AIzaSyCbXDdwnz0LNU7IXr4KO__usfkjYYaHJpo",
+      apiKey: "YASAL_UYARI_GERCEK_API_ANAHTARINIZI_BURAYA_YAZMAYIN", 
       authDomain: "okudugumkitaplarapp.firebaseapp.com",
       projectId: "okudugumkitaplarapp",
       storageBucket: "okudugumkitaplarapp.firebasestorage.app",
@@ -111,18 +113,13 @@
         return title
             .toLocaleLowerCase('tr-TR')
             .split(' ')
-            .map(word => {
-                if (!word) return '';
-                return word.charAt(0).toLocaleUpperCase('tr-TR') + word.slice(1);
-            })
+            .map(word => word.charAt(0).toLocaleUpperCase('tr-TR') + word.slice(1))
             .join(' ');
       };
 
-      // GÜNCELLENDİ: Halid Ziya için standardizasyon eklendi.
       const standardizeAuthorName = (author) => {
         if (!author) return '';
         const lowerCaseAuthor = author.toLocaleLowerCase('tr-TR').trim();
-        
         const omerSeyfettinVariations = ['ömer seyfettin', 'omer seyfettin', 'ö. seyfettin', 'o. seyfettin', 'ö.seyfettin', 'o.seyfettin', 'ö. seyfetin', 'o. seyfetin'];
         const halidZiyaVariations = ['halid ziya', 'halit ziya', 'hâlid ziya', 'halid ziya uşaklıgil', 'halit ziya uşaklıgil', 'hâlid ziya uşaklıgil'];
 
@@ -447,4 +444,3 @@
 
 </body>
 </html>
-
